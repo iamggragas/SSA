@@ -18,7 +18,7 @@ app.add_middleware(
 )
 
 @app.post("/api/forecast")
-async def forecast(file: UploadFile = File(...), forecast_days: int = Form(...)):
+async def forecast(file: UploadFile = File(...), forecast_periods: int = Form(...), forecast_type: str = Form("daily"), forecast_day_of_week: str = Form(None)):
     try:
         contents = await file.read()
         
@@ -54,37 +54,69 @@ async def forecast(file: UploadFile = File(...), forecast_days: int = Form(...))
         df = df.dropna(subset=['Date', 'Value'])
         df = df.sort_values('Date').reset_index(drop=True)
         
+        if forecast_type == 'monthly':
+            df = df.set_index('Date').resample('ME').sum().reset_index()
+        elif forecast_type == 'weekly':
+            df = df.set_index('Date').resample('W').sum().reset_index()
+        elif forecast_type == 'day_of_week':
+            if forecast_day_of_week:
+                df = df[df['Date'].dt.day_name() == forecast_day_of_week].reset_index(drop=True)
+            else:
+                df = df[df['Date'].dt.day_name() == 'Monday'].reset_index(drop=True)
+        
         if len(df) < 10:
             raise HTTPException(status_code=400, detail="Not enough data points for SSA.")
 
-        # Determine L based on data length. Default is 30, but cap at len(df) // 2
+        # Determine L and components based on data length and type.
         L = 30
-        if len(df) < 60:
-            L = len(df) // 2
+        components = [0, 1, 2, 3]
+        
+        if forecast_type == 'monthly':
+            L = min(12, max(2, len(df) // 2))
+            components = [0, 1] if L < 6 else [0, 1, 2]
+        elif forecast_type in ['weekly', 'day_of_week']:
+            L = min(13, max(2, len(df) // 2))
+            components = [0]
+        else:
+            if len(df) < 60:
+                L = max(2, len(df) // 2)
 
         # Initialize SSA
         ssa = SSA(df['Value'].values, L=L)
 
         # Extract components
         trend = ssa.reconstruct(0)
-        seasonality = ssa.reconstruct([1, 2, 3])
+        
+        seasonality_comps = [c for c in components if c > 0]
+        if seasonality_comps:
+            seasonality = ssa.reconstruct(seasonality_comps)
+        else:
+            seasonality = np.zeros(len(df))
+            
         noise = df['Value'] - trend - seasonality
         
         # Forecast
-        forecast_vals = ssa.forecast([0, 1, 2, 3], steps=forecast_days)
+        forecast_vals = ssa.forecast(components, steps=forecast_periods)
         
         # Generate future dates
         last_date = df['Date'].iloc[-1]
         
-        # Try to infer frequency, fallback to 1 day
-        try:
-            freq = df['Date'].diff().median()
-            if pd.isna(freq):
+        if forecast_type == 'monthly':
+            # Use pd.DateOffset to add months
+            forecast_dates = [last_date + pd.DateOffset(months=i) for i in range(1, forecast_periods + 1)]
+        elif forecast_type in ['weekly', 'day_of_week']:
+            # Use pd.DateOffset to add weeks
+            forecast_dates = [last_date + pd.DateOffset(weeks=i) for i in range(1, forecast_periods + 1)]
+        else:
+            # Try to infer frequency, fallback to 1 day
+            try:
+                freq = df['Date'].diff().median()
+                if pd.isna(freq):
+                    freq = pd.Timedelta(days=1)
+            except:
                 freq = pd.Timedelta(days=1)
-        except:
-            freq = pd.Timedelta(days=1)
-            
-        forecast_dates = [last_date + freq * i for i in range(1, forecast_days + 1)]
+                
+            forecast_dates = [last_date + freq * i for i in range(1, forecast_periods + 1)]
 
         # Prepare response
         # We need to send back dates as strings
