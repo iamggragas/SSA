@@ -9,12 +9,15 @@ import {
   CartesianGrid,
   Tooltip,
   Legend,
-  ResponsiveContainer
+  ResponsiveContainer,
+  Brush
 } from 'recharts';
 
 function App() {
   const [file, setFile] = useState(null);
-  const [forecastDays, setForecastDays] = useState(30);
+  const [forecastCount, setForecastCount] = useState(30);
+  const [forecastType, setForecastType] = useState('daily');
+  const [forecastDayOfWeek, setForecastDayOfWeek] = useState('Monday');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
   const [result, setResult] = useState(null);
@@ -47,7 +50,11 @@ function App() {
     
     const formData = new FormData();
     formData.append('file', file);
-    formData.append('forecast_days', forecastDays);
+    formData.append('forecast_periods', forecastCount);
+    formData.append('forecast_type', forecastType);
+    if (forecastType === 'day_of_week') {
+      formData.append('forecast_day_of_week', forecastDayOfWeek);
+    }
     
     try {
       const response = await axios.post('http://localhost:8000/api/forecast', formData, {
@@ -61,6 +68,26 @@ function App() {
     } finally {
       setIsLoading(false);
     }
+  };
+
+  const formatDateLabel = (dateString) => {
+    if (forecastType === 'daily' || !dateString) return dateString;
+    const parts = dateString.split('-');
+    if (parts.length >= 3) {
+      const year = parts[0];
+      const monthNum = parseInt(parts[1], 10);
+      const dayNum = parseInt(parts[2], 10);
+      const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+      const monthName = (monthNum >= 1 && monthNum <= 12) ? months[monthNum - 1] : '';
+
+      if (forecastType === 'monthly') {
+        return `${monthName} ${year}`;
+      } else if (forecastType === 'weekly') {
+        const weekNum = Math.ceil(dayNum / 7);
+        return `Week ${weekNum} (${monthName} ${year})`;
+      }
+    }
+    return dateString;
   };
 
   const getCombinedChartData = () => {
@@ -122,14 +149,48 @@ function App() {
 
           <div className="controls">
             <div className="input-group">
-              <label><Calendar size={14} style={{display:'inline', marginRight:'4px', verticalAlign:'middle'}}/> Forecast Days</label>
+              <label><Calendar size={14} style={{display:'inline', marginRight:'4px', verticalAlign:'middle'}}/> Forecast Type</label>
+              <select 
+                className="input-field" 
+                style={{ paddingRight: '30px' }}
+                value={forecastType} 
+                onChange={(e) => setForecastType(e.target.value)}
+              >
+                <option value="daily">Daily</option>
+                <option value="weekly">Weekly</option>
+                <option value="monthly">Monthly</option>
+                <option value="day_of_week">Specific Day</option>
+              </select>
+            </div>
+            
+            {forecastType === 'day_of_week' && (
+              <div className="input-group">
+                <label><Calendar size={14} style={{display:'inline', marginRight:'4px', verticalAlign:'middle'}}/> Select Day</label>
+                <select 
+                  className="input-field" 
+                  value={forecastDayOfWeek} 
+                  onChange={(e) => setForecastDayOfWeek(e.target.value)}
+                >
+                  <option value="Monday">Monday</option>
+                  <option value="Tuesday">Tuesday</option>
+                  <option value="Wednesday">Wednesday</option>
+                  <option value="Thursday">Thursday</option>
+                  <option value="Friday">Friday</option>
+                  <option value="Saturday">Saturday</option>
+                  <option value="Sunday">Sunday</option>
+                </select>
+              </div>
+            )}
+            
+            <div className="input-group">
+              <label><Calendar size={14} style={{display:'inline', marginRight:'4px', verticalAlign:'middle'}}/> Forecast {forecastType === 'daily' ? 'Days' : forecastType === 'weekly' ? 'Weeks' : forecastType === 'monthly' ? 'Months' : forecastDayOfWeek + 's'}</label>
               <input 
                 type="number" 
                 className="input-field" 
-                value={forecastDays} 
-                onChange={(e) => setForecastDays(e.target.value)}
+                value={forecastCount} 
+                onChange={(e) => setForecastCount(e.target.value)}
                 min="1"
-                max="365"
+                max={forecastType === 'daily' ? 365 : forecastType === 'monthly' ? 120 : 52}
               />
             </div>
             
@@ -152,7 +213,7 @@ function App() {
               <ResponsiveContainer width="100%" height="100%">
                 <LineChart
                   data={getCombinedChartData()}
-                  margin={{ top: 5, right: 30, left: 20, bottom: 5 }}
+                  margin={{ top: 5, right: 30, left: 30, bottom: 60 }}
                 >
                   <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.1)" />
                   <XAxis 
@@ -161,16 +222,20 @@ function App() {
                     tick={{ fill: '#94a3b8' }} 
                     tickMargin={10}
                     minTickGap={30}
+                    tickFormatter={formatDateLabel}
+                    label={{ value: forecastType === 'day_of_week' ? forecastDayOfWeek + 's' : forecastType.charAt(0).toUpperCase() + forecastType.slice(1), position: 'bottom', offset: 35, fill: '#94a3b8', fontSize: 12 }}
                   />
                   <YAxis 
                     stroke="#94a3b8" 
                     tick={{ fill: '#94a3b8' }} 
+                    label={{ value: 'Revenue', angle: -90, position: 'insideLeft', offset: -15, fill: '#94a3b8', fontSize: 12 }}
                   />
                   <Tooltip 
                     contentStyle={{ backgroundColor: 'rgba(15, 23, 42, 0.9)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px' }}
                     itemStyle={{ color: '#fff' }}
+                    labelFormatter={formatDateLabel}
                   />
-                  <Legend wrapperStyle={{ paddingTop: '20px' }} />
+                  <Legend wrapperStyle={{ paddingTop: '40px' }} />
                   <Line 
                     type="monotone" 
                     dataKey="History" 
@@ -187,6 +252,13 @@ function App() {
                     dot={false}
                     activeDot={{ r: 6 }}
                   />
+                  <Brush 
+                    dataKey="date" 
+                    height={30} 
+                    stroke="#94a3b8" 
+                    fill="rgba(15, 23, 42, 0.9)" 
+                    tickFormatter={formatDateLabel} 
+                  />
                 </LineChart>
               </ResponsiveContainer>
             </div>
@@ -198,7 +270,7 @@ function App() {
               <table className="data-table">
                 <thead>
                   <tr>
-                    <th>Day</th>
+                    <th>{forecastType === 'daily' ? 'Day' : forecastType === 'weekly' ? 'Week' : forecastType === 'monthly' ? 'Month' : forecastDayOfWeek}</th>
                     <th>Date</th>
                     <th>Predicted Value</th>
                   </tr>
@@ -207,7 +279,7 @@ function App() {
                   {result.forecast.dates.map((date, index) => (
                     <tr key={index}>
                       <td>{index + 1}</td>
-                      <td>{date}</td>
+                      <td>{formatDateLabel(date)}</td>
                       <td>
                         <span style={{color: '#3b82f6', fontWeight: '600'}}>
                           {result.forecast.values[index].toFixed(4)}
