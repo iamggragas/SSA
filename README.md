@@ -1,26 +1,34 @@
 # 🚀 SSA Forecasting Tool
-A web-based application utilizing Singular Spectrum Analysis (SSA) to predict future prices based on historical data. Process is simple: upload, configure, and predict!
+A modern, web-based application utilizing Singular Spectrum Analysis (SSA) to forecast both future revenue and specific inventory data based on historical trends. The process is simple: select your tool mode, upload your data, configure your parameters, and predict!
 
 ## 🛠 Tech Stack
-- **Frontend:** React.js (Modern & Responsive UI)
+- **Frontend:** React.js, Vite, React Router (Modern & Responsive UI)
 - **Backend:** FastAPI (High-performance Python framework)
-- **Algorithm:** Singular Spectrum Analysis (SSA)
+- **Algorithm:** Singular Spectrum Analysis (SSA) via powerful scientific packages
 
 ## 📋 Data Upload Requirements
-To ensure accurate forecasting, please make sure your CSV file contains exactly two columns:
+To ensure accurate forecasting, please ensure your CSV or Excel file conforms to the structural prerequisites of the tool you intend to use. Note that empty rows will be automatically dropped.
 
+### Revenue Forecaster
+Demands a strict 2-column configuration:
 | Column Name | Description | Format |
 | :--- | :--- | :--- |
-| **date** | The timeline of the data | YYYY-MM-DD (e.g., 2026-04-05) |
-| **price** | The value you wish to forecast | Numeric (e.g., 150.50) |
+| **Date** | The timeline of the data | YYYY-MM-DD (e.g., 2026-04-05) |
+| **Value** | The revenue or target metric to forecast | Numeric (e.g., 150.50) |
 
-*Note: Please ensure there are no empty rows in your CSV file to prevent computation errors.*
+### Inventory Forecaster
+Supports flexible multi-column uploads to forecast individual units:
+| Column Index | Field | Description |
+| :--- | :--- | :--- |
+| **Column 1** | **Date** | The timeline of the data |
+| **Column 2..N** | **Products** | Various numeric inventory values for corresponding distinct tracking metrics |
 
 ## 💡 How to Use
-1. **Upload:** Upload your 2-column CSV file.
-2. **Configure:** Input the number of days you want to predict into the future.
-3. **Analyze:** Click the predict button and wait for the results from the FastAPI backend.
-4. **Result:** View the generated graph and table of forecasted values.
+1. **Navigate:** Choose either the *Revenue Forecaster* or *Inventory Forecaster* via the sidebar navigation.
+2. **Upload:** Drag and drop your `.csv` or `.xlsx` data file.
+3. **Configure:** Select a specific Product Data Column (if using Inventory mode), pick the interval format (daily, weekly, monthly, strictly specific days), and enter the desired duration.
+4. **Analyze:** Click the predict button and let the Python FastAPI backend churn via SSA logic.
+5. **Result:** Visualize the generated historical+forecasted graphical layout and exact parsed tables.
 
 ## ⚙️ Installation & Setup
 
@@ -35,5 +43,5 @@ uvicorn main:app --reload
 ```bash
 cd frontend
 npm install
-npm start
+npm run dev
 ```

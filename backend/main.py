@@ -17,8 +17,30 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+@app.post("/api/columns")
+async def get_columns(file: UploadFile = File(...)):
+    try:
+        contents = await file.read()
+        if file.filename.endswith('.csv'):
+            df = pd.read_csv(io.BytesIO(contents), nrows=5)
+        elif file.filename.endswith(('.xlsx', '.xls')):
+            try:
+                df = pd.read_excel(io.BytesIO(contents), nrows=5)
+            except:
+                df = pd.read_excel(io.BytesIO(contents), header=None, nrows=5)
+        else:
+            raise HTTPException(status_code=400, detail="Unsupported file format.")
+        
+        columns = list(df.columns)
+        if len(columns) > 1:
+            return {"columns": [str(c) for c in columns[1:]]}
+        else:
+            return {"columns": []}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.post("/api/forecast")
-async def forecast(file: UploadFile = File(...), forecast_periods: int = Form(...), forecast_type: str = Form("daily"), forecast_day_of_week: str = Form(None)):
+async def forecast(file: UploadFile = File(...), forecast_periods: int = Form(...), forecast_type: str = Form("daily"), forecast_day_of_week: str = Form(None), target_column: str = Form(None)):
     try:
         contents = await file.read()
         
@@ -28,19 +50,25 @@ async def forecast(file: UploadFile = File(...), forecast_periods: int = Form(..
             if len(df.columns) < 2:
                 raise Exception("File must have at least two columns.")
             # Standardize columns
-            df = df.iloc[:, :2]
+            if target_column and target_column in df.columns:
+                date_col = df.columns[0]
+                df = df[[date_col, target_column]]
+            else:
+                df = df.iloc[:, :2]
             df.columns = ['Date', 'Value']
         elif file.filename.endswith('.xlsx') or file.filename.endswith('.xls'):
-            # The previous logic had header=None, names=['Date', 'Value'] but let's try to infer if columns are present 
-            # Or we can just take the first two columns and rename them.
             try:
                 df = pd.read_excel(io.BytesIO(contents))
                 if len(df.columns) < 2:
                     raise Exception("File must have at least two columns.")
-                # We'll just take the first two columns and assume they are Date and Value
-                df = df.iloc[:, :2]
+                
+                if target_column and target_column in df.columns:
+                    date_col = df.columns[0]
+                    df = df[[date_col, target_column]]
+                else:
+                    df = df.iloc[:, :2]
                 df.columns = ['Date', 'Value']
-            except:
+            except Exception as read_ex:
                 # Fallback to no header
                 df = pd.read_excel(io.BytesIO(contents), header=None)
                 df = df.iloc[:, :2]
